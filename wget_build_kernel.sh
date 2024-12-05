@@ -115,11 +115,10 @@ mount -t tmpfs tmpfs /run
 [ -e /dev/null ]    || mknod -m 666 /dev/null c 1 3
 
 # Load necessary modules
-insmod /lib/modules/6.8.0/kernel/fs/ext4/ext4.ko
-insmod /lib/modules/6.8.0/kernel/drivers/ata/libata.ko
-insmod /lib/modules/6.8.0/kernel/drivers/scsi/scsi_mod.ko
-insmod /lib/modules/6.8.0/kernel/drivers/scsi/sd_mod.ko
-insmod /lib/modules/6.8.0/kernel/drivers/ata/ata_piix.ko
+for mod in $(find /lib/modules -name '*.ko'); do
+    echo "Loading module: $mod"
+    insmod $mod
+done
 
 # Set up basic networking
 ip link set lo up
@@ -132,7 +131,7 @@ mkdir -p /newroot
 echo "Kernel command line:"
 cat /proc/cmdline
 echo "Block devices:"
-ls -l /dev/sd*
+ls -l /dev/vd*
 echo "Partition info:"
 cat /proc/partitions
 echo "File system info:"
@@ -140,27 +139,29 @@ blkid
 
 # Find root partition
 ROOT_PART=""
-for part in /dev/sda*; do
-    if blkid "$part" | grep -q 'TYPE="ext4"'; then
-        echo "Found ext4 partition: $part"
+for part in /dev/vda*; do
+    if blkid "$part" | grep -q 'LABEL="cloudimg-rootfs"'; then
+        echo "Found root partition: $part"
         ROOT_PART="$part"
         break
     fi
 done
 
 if [ -z "$ROOT_PART" ]; then
-    echo "No ext4 root partition found!"
+    echo "No root partition found!"
     echo "Available partitions:"
     blkid
     echo "Trying to mount each partition to check filesystem..."
-    for part in /dev/sda*; do
+    for part in /dev/vda*; do
         echo "Trying $part..."
         if mount -t ext4 "$part" /newroot 2>/dev/null; then
-            echo "Successfully mounted $part"
-            ROOT_PART="$part"
-            break
-        else
-            umount /newroot 2>/dev/null
+            if [ -d "/newroot/home" ] && [ -d "/newroot/etc" ]; then
+                echo "Found root filesystem on $part"
+                ROOT_PART="$part"
+                umount /newroot
+                break
+            fi
+            umount /newroot
         fi
     done
 fi
@@ -170,19 +171,35 @@ if [ -z "$ROOT_PART" ]; then
     exec sh
 fi
 
-echo "Attempting to mount $ROOT_PART..."
-mount -t ext4 "$ROOT_PART" /newroot
+echo "Attempting to mount $ROOT_PART as root filesystem..."
+mount -o rw "$ROOT_PART" /newroot
 
 if [ $? -ne 0 ]; then
     echo "Failed to mount root filesystem!"
     echo "Available block devices:"
-    ls -l /dev/sd*
+    ls -l /dev/vd*
     echo "Kernel modules loaded:"
     lsmod
     echo "Block device details:"
     blkid
     echo "Dropping to shell..."
     exec sh
+fi
+
+# Verify root filesystem
+if [ ! -d "/newroot/home" ] || [ ! -d "/newroot/etc" ]; then
+    echo "Mounted filesystem does not look like a root filesystem!"
+    echo "Contents of /newroot:"
+    ls -la /newroot
+    echo "Dropping to shell..."
+    exec sh
+fi
+
+echo "Root filesystem mounted successfully"
+echo "Verifying password file..."
+if [ -f "/newroot/etc/shadow" ]; then
+    echo "Shadow file exists:"
+    cat /newroot/etc/shadow | grep ubuntu
 fi
 
 echo "Switching to root filesystem..."

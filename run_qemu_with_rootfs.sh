@@ -8,7 +8,7 @@ IMAGE_NAME="ubuntu2024-server.qcow2"
 KERNEL_PATH="$BUILD_DIR/linux-$KERNEL_VERSION/arch/x86/boot/bzImage"
 QEMU_IMG="/home/vvilvaraj/Desktop/CanisFW/minimal_ROOTFS/ubuntu2024-server.qcow2"
 INITRAMFS_IMG="$BUILD_DIR/initrd.dir/initramfs-${KERNEL_VERSION}.img"
-KERNEL_CMD="rw console=tty0 console=ttyS0,115200 ignore_loglevel rootwait"
+KERNEL_CMD="rw console=tty0 console=ttyS0,115200 ignore_loglevel rootwait root=/dev/vda1"
 
 # Check if image exists
 if [ ! -f "$IMAGE_NAME" ]; then
@@ -46,7 +46,8 @@ qemu-system-x86_64 \
     -smp 16 \
     -enable-kvm \
     -netdev "user,id=network0,hostfwd=tcp::2023-:22" \
-    -drive file=${QEMU_IMG},index=0,media=disk,format=qcow2 \
+    -drive file=${QEMU_IMG},if=virtio,format=qcow2 \
+    -drive file=cloud-init.iso,if=virtio,format=raw \
     -device "e1000,netdev=network0" \
     -machine q35,cxl=on -m 16G \
     -serial stdio \
