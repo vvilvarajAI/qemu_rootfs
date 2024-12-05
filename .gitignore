@@ -1,0 +1,23 @@
+# Generated directories
+data/
+shared/
+
+# QEMU and kernel files
+*.qcow2
+*.iso
+*.img
+*.log
+
+# Docker
+.env
+.docker/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db 

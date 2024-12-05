@@ -1,0 +1,25 @@
+version: '3'
+services:
+  qemu-cxl:
+    build: .
+    privileged: true  # Required for KVM
+    volumes:
+      - ./shared:/workspace/shared
+      - ./data:/workspace/data
+      - /dev/kvm:/dev/kvm
+    devices:
+      - /dev/kvm:/dev/kvm
+    ports:
+      - "2023:2023"  # SSH port forwarding
+    environment:
+      - DISPLAY=${DISPLAY}
+    network_mode: "host"  # For easier networking
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+volumes:
+  qemu_data:
+  kernel_data:

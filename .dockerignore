@@ -1,0 +1,7 @@
+.git
+*.qcow2
+*.iso
+shared/
+*.img
+temp/
+QEMU_CXL_DEV_TOOLS/ 
