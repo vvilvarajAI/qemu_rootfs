@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     bc \
     python3 \
+    python3-pip \
+    python3-venv \
+    python3-setuptools \
+    python3-dev \
+    python3-wheel \
     git \
     kmod \
     ninja-build \
@@ -24,16 +29,38 @@ RUN apt-get update && apt-get install -y \
     libslirp-dev \
     libcap-ng-dev \
     libattr1-dev \
+    meson \
+    libsdl2-dev \
+    libspice-server-dev \
+    libspice-protocol-dev \
+    libaio-dev \
+    libiscsi-dev \
+    libnuma-dev \
+    libcap-dev \
+    libseccomp-dev \
+    libfdt-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for kernel build
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install tomli toml setuptools wheel
 
 # Build QEMU from source with CXL support
 WORKDIR /build
 RUN git clone https://github.com/qemu/qemu.git && \
     cd qemu && \
-    git checkout v8.1.0 && \
+    git checkout master && \
+    git submodule init && \
+    git submodule update --recursive && \
     mkdir build && \
     cd build && \
-    ../configure --target-list=x86_64-softmmu --enable-slirp --enable-debug && \
+    ../configure --target-list=x86_64-softmmu \
+                 --enable-slirp \
+                 --enable-debug \
+                 --disable-werror \
+                 --enable-sdl \
+                 --enable-spice \
+                 --enable-numa && \
     make -j$(nproc) && \
     make install && \
     cd / && \
