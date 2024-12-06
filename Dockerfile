@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y \
     libcap-dev \
     libseccomp-dev \
     libfdt-dev \
+    cpio \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies for kernel build
@@ -99,7 +100,7 @@ if [ ! -f "/workspace/data/rootfs/ubuntu2024-server.qcow2" ]; then\n\
     ./create_rootfs.sh\n\
 fi\n\
 \n\
-if [ ! -f "/workspace/data/kernel/linux-6.8/arch/x86/boot/bzImage" ]; then\n\
+if [ ! -f "/workspace/data/kernel/linux-6.12/arch/x86/boot/bzImage" ]; then\n\
     echo "Building kernel..."\n\
     ./wget_build_kernel.sh\n\
 fi\n\
