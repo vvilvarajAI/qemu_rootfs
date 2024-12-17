@@ -1,21 +1,24 @@
 #!/bin/bash
 
-set -x
+#set -x
 
-# Variables
-KERNEL_VERSION="6.8"
-BUILD_DIR="/home/vvilvaraj/QEMU_CXL_DEV_TOOLS/temp"
-KERNEL_SOURCE_DIR="$BUILD_DIR/linux-$KERNEL_VERSION"
-KERNEL_PATH="$BUILD_DIR/linux-$KERNEL_VERSION/arch/x86/boot/bzImage"
-INITRAMFS_PATH="$BUILD_DIR/initrd.dir/initramfs-${KERNEL_VERSION}.img"
+# Source the kernel configuration
+source ./kernel_config.sh
+
+# Log the start of kernel build process
+log_message "Starting kernel build process for version ${KERNEL_VERSION}"
+
+KERNEL_SOURCE_DIR="${KERNEL_BUILD_DIR}/linux-${KERNEL_VERSION}"
+KERNEL_PATH="${KERNEL_SOURCE_DIR}/arch/x86/boot/bzImage"
+INITRAMFS_PATH="${INITRD_DIR}/initramfs-${KERNEL_VERSION}.img"
 
 # Create build directory if it doesn't exist
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
+mkdir -p "$KERNEL_BUILD_DIR"
+cd "$KERNEL_BUILD_DIR"
 
 # Download kernel if not already present
 if [ ! -d "$KERNEL_SOURCE_DIR" ]; then
-    echo "Downloading Linux kernel $KERNEL_VERSION..."
+    log_message "Downloading Linux kernel ${KERNEL_VERSION}..."
     wget "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$KERNEL_VERSION.tar.xz"
     tar xf "linux-$KERNEL_VERSION.tar.xz"
     rm "linux-$KERNEL_VERSION.tar.xz"
@@ -25,7 +28,7 @@ cd "$KERNEL_SOURCE_DIR"
 
 # Configure kernel if .config doesn't exist
 if [ ! -f ".config" ]; then
-    echo "Configuring kernel..."
+    log_message "Configuring kernel..."
     make defconfig
     # Enable CXL support
     scripts/config --enable CONFIG_CXL_BUS
@@ -37,16 +40,18 @@ if [ ! -f ".config" ]; then
 fi
 
 # Build kernel
-echo "Building kernel..."
+log_message "Building kernel..."
 make -j$(nproc)
 
 # Build and package modules
-make modules_install INSTALL_MOD_PATH="$BUILD_DIR"
+log_message "Installing kernel modules..."
+make modules_install INSTALL_MOD_PATH="${BUILD_DIR}"
 
 # Create initramfs directory
-sudo rm -rf "$BUILD_DIR/initrd.dir"
-sudo mkdir -p "$BUILD_DIR/initrd.dir"
-cd "$BUILD_DIR/initrd.dir"
+log_message "Creating initramfs structure..."
+sudo rm -rf "$INITRD_DIR"
+sudo mkdir -p "$INITRD_DIR"
+cd "$INITRD_DIR"
 
 # Create directory structure
 sudo mkdir -p {bin,sbin,etc,proc,sys,usr/{bin,sbin},root,dev,lib64,lib/x86_64-linux-gnu,run,tmp,var/{log,run},newroot,lib/modules}
@@ -66,7 +71,7 @@ for prog in $(./busybox --list); do
         sudo ln -sf busybox "$prog"
     fi
 done
-cd ..
+cd "$INITRD_DIR"
 
 # Copy blkid and required libraries
 sudo cp $(which blkid) sbin/
@@ -87,20 +92,28 @@ sudo mknod -m 660 dev/sda1 b 8 1
 sudo mknod -m 660 dev/sda2 b 8 2
 
 # Copy kernel modules and generate modules.dep
-sudo cp -r "$BUILD_DIR/lib/modules/${KERNEL_VERSION}.0" lib/modules/
-cd lib/modules/${KERNEL_VERSION}.0
-sudo rm -f modules.*
-cd ../../..
-sudo depmod -b . "${KERNEL_VERSION}.0"
+log_message "Copying kernel modules..."
+if [ -d "${BUILD_DIR}/lib/modules/${KERNEL_VERSION}.0" ]; then
+    sudo cp -r "${BUILD_DIR}/lib/modules/${KERNEL_VERSION}.0" "${INITRD_DIR}/lib/modules/"
+    cd "${INITRD_DIR}/lib/modules/${KERNEL_VERSION}.0"
+    sudo rm -f modules.*
+    cd "${INITRD_DIR}"
+    sudo depmod -b "${INITRD_DIR}" "${KERNEL_VERSION}.0"
+else
+    log_message "ERROR: Kernel modules directory not found at ${BUILD_DIR}/lib/modules/${KERNEL_VERSION}.0"
+    exit 1
+fi
 
 # Create essential files
-sudo touch etc/fstab
-echo "root::0:0:root:/root:/bin/sh" | sudo tee etc/passwd > /dev/null
-echo "root:x:0:" | sudo tee etc/group > /dev/null
-sudo chmod 644 etc/passwd etc/group
+log_message "Creating essential files..."
+sudo touch "${INITRD_DIR}/etc/fstab"
+echo "root::0:0:root:/root:/bin/sh" | sudo tee "${INITRD_DIR}/etc/passwd" > /dev/null
+echo "root:x:0:" | sudo tee "${INITRD_DIR}/etc/group" > /dev/null
+sudo chmod 644 "${INITRD_DIR}/etc/passwd" "${INITRD_DIR}/etc/group"
 
 # Create init script
-sudo tee init << 'EOF' > /dev/null
+log_message "Creating init script..."
+sudo tee "${INITRD_DIR}/init" << 'EOF' > /dev/null
 #!/bin/sh
 
 # Mount essential filesystems
@@ -209,13 +222,14 @@ exec switch_root /newroot /sbin/init
 exec sh
 EOF
 
-sudo chmod 755 init
+sudo chmod 755 "${INITRD_DIR}/init"
 
 # Create the initramfs with proper output path
-cd "$BUILD_DIR/initrd.dir"
+log_message "Creating initramfs image..."
+cd "$INITRD_DIR"
 sudo bash -c "find . -print0 | cpio --null --create --format=newc 2>/dev/null | gzip > '$INITRAMFS_PATH'"
 sudo chown $(id -u):$(id -g) "$INITRAMFS_PATH"
 
 cd "$KERNEL_SOURCE_DIR"
-echo "Kernel build complete!"
+log_message "Kernel build completed successfully"
 echo "$KERNEL_PATH"
